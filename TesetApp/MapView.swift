@@ -136,7 +136,7 @@ struct MapView: View {
             // Search Bar at the top
             VStack {
                 HStack {
-                    TextField("Search for a library", text: $searchText)
+                    TextField("Search for an address", text: $searchText)
                         .padding(10)
                         .background(Color.white)
                         .cornerRadius(8)
