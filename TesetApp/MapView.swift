@@ -37,6 +37,7 @@ struct MapView: View {
     @State private var annotations: [AnnotationItem] = [] // Combined annotations for libraries and searched locations
     @State private var isSearchPerformed: Bool = false
     @State private var pannedLocation: CLLocationCoordinate2D? = nil // Track the panned location
+    @State private var searchText: String = "" // State for the search text
 
     // Custom initializer to initialize `selectedLibrary`
     init() {
@@ -132,6 +133,64 @@ struct MapView: View {
             .padding(.bottom, 40) // Padding from the bottom to avoid overlap with the tab bar
             .position(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height - 200) // Position at the bottom of the screen
 
+            // Search Bar at the top
+            VStack {
+                HStack {
+                    TextField("Search for a library", text: $searchText)
+                        .padding(10)
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .padding(.horizontal)
+                        .onSubmit {
+                            searchForAddress() // Optional: trigger the search on submit
+                        }
+                        .overlay(
+                            HStack {
+                                Spacer() // Push the "X" button to the right side
+                                if !searchText.isEmpty {
+                                    Button(action: {
+                                        searchText = "" // Clear the text when the button is tapped
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(.trailing, 8) // Add some spacing on the right inside the field
+                                }
+                            }
+                            .padding(.trailing, 10) // Ensure the "X" is within the padding of the text field
+                        )
+
+
+                    // "X" Button to clear the text
+//                    if !searchText.isEmpty {
+//                        Button(action: {
+//                            searchText = "" // Clear the text when the button is tapped
+//                        }) {
+//                            Image(systemName: "xmark.circle.fill")
+//                                .foregroundColor(.gray)
+//                        }
+//                        .padding(.trailing, 8) // Add some spacing on the right
+//                    }
+
+                    // Magnifying glass button
+                    Button(action: {
+                        searchForAddress() // Trigger search
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .padding() // Adds padding around the magnifying glass icon
+                            .background(Color.green) // Set the background color to green
+                            .foregroundColor(.white) // Make the icon white
+                            .clipShape(Circle()) // Make the button circular
+                            .padding(.trailing, 8) // Optional: Add spacing between the button and text field
+                    }
+                }
+                .padding(.top, 40) // Add padding from the top of the screen to position it at the top
+                .padding(.horizontal)
+
+                Spacer() // Pushes the search bar to the top of the screen
+            }
+
+
         }
         .onAppear {
             // Update region when the view appears and the user location is available
@@ -152,6 +211,23 @@ struct MapView: View {
             pannedLocation = newCenter
         }
     }
+
+    // Function to search for the address and update the map's region
+    func searchForAddress() {
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(searchText) { (placemarks, error) in
+            if let placemark = placemarks?.first {
+                if let location = placemark.location {
+                    region.center = location.coordinate
+                    // Convert CLPlacemark to MKPlacemark and add to annotations
+                    let mkPlacemark = MKPlacemark(placemark: placemark)
+                    annotations.append(.searchedLocation(mkPlacemark))
+                    findLibrariesAtLocation(location.coordinate) // Fetch libraries at the searched location
+                }
+            }
+        }
+    }
+
 
     // Function to find libraries at a specific location
     func findLibrariesAtLocation(_ coordinate: CLLocationCoordinate2D) {
