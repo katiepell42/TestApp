@@ -4,17 +4,18 @@ import MapKit
 struct LibraryDetailView: View {
     @Binding var library: Library // Use a binding to update the library directly
     @State private var showingActionSheet = false
+    @State private var isVisitedLocal: Bool  // Use @State to track the visited status locally
 
-    // Function to update the pin style when a library is marked as visited
-    func updatePinStyle() {
-        // Automatically update the pin style based on visited status
-        if library.isVisited {
-            // Logic to update the pin to yellow with a book icon (handle this in your map view)
-            print("Library marked as visited. Update pin style here.")
-        } else {
-            // Logic to reset the pin to default style (handle this in your map view)
-            print("Library unmarked as visited. Reset pin style here.")
-        }
+    // Initialize with the current `isVisited` state from the binding
+    init(library: Binding<Library>) {
+        _library = library
+        _isVisitedLocal = State(initialValue: library.wrappedValue.isVisited) // Initialize local state
+    }
+
+    func markAsVisited() {
+        isVisitedLocal.toggle()  // Toggle the local visited status
+        library.isVisited = isVisitedLocal // Update the parent's state via the binding
+        printLibrary(library)  // Log library information
     }
 
     var body: some View {
@@ -23,10 +24,11 @@ struct LibraryDetailView: View {
             Text(library.name)
                 .font(.largeTitle)
                 .bold()
-                .lineLimit(nil)
+                .lineLimit(3)
                 .multilineTextAlignment(.center)
                 .padding()
-                .frame(maxWidth: .infinity, alignment:.leading)
+                .fixedSize(horizontal: false, vertical: true) // Prevent truncation and allow wrapping
+                .frame(maxWidth: .infinity)
 
             // Library Address
             Text(library.address)
@@ -75,13 +77,12 @@ struct LibraryDetailView: View {
 
             // Mark as Visited Button
             Button(action: {
-                library.isVisited.toggle() // Toggle visited status
-                updatePinStyle()  // Update pin style based on visited status
+                markAsVisited()  // Toggle visited status
             }) {
-                Text(library.isVisited ? "Unmark as Visited" : "Mark as Visited")
+                Text(isVisitedLocal ? "Unmark as Visited" : "Mark as Visited")
                     .font(.title2)
                     .padding()
-                    .background(library.isVisited ? Color.yellow : Color.green)
+                    .background(isVisitedLocal ? Color.yellow : Color.green)
                     .foregroundColor(.white)
                     .cornerRadius(10)
             }
@@ -98,6 +99,7 @@ struct LibraryDetailView: View {
 
 struct LibraryDetailView_Previews: PreviewProvider {
     static var previews: some View {
+        // Provide a sample Library object to use in the preview
         LibraryDetailView(library: .constant(Library(mapItem: MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194))))))
     }
 }

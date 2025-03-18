@@ -1,7 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
-import Combine // Import Combine
+import Combine
 
 enum AnnotationItem: Identifiable {
     case library(Library)
@@ -42,15 +42,15 @@ struct MapView: View {
     @FocusState private var isSearchFocused: Bool // To track the focus state of the search bar
     @State private var keyboardHeight: CGFloat = 0 // To track keyboard height
     @State private var keyboardWillChangeFrameCancellable: AnyCancellable? // To store the publisher
+    @State private var librariesLoaded = false // Flag to prevent reloading libraries on every appearance
 
-    // Custom initializer to initialize `selectedLibrary`
     init() {
         // Initialize a default MKMapItem
         let defaultPlacemark = MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0))
         let defaultMapItem = MKMapItem(placemark: defaultPlacemark)
         
         // Initialize selectedLibrary with just the mapItem
-        _selectedLibrary = State(initialValue: Library(mapItem: defaultMapItem)) // Only passing mapItem
+        _selectedLibrary = State(initialValue: Library(mapItem: MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)))))
 
         // Start observing the keyboard changes
         self._keyboardWillChangeFrameCancellable = State(initialValue:
@@ -59,7 +59,6 @@ struct MapView: View {
                     (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect)?.height
                 }
                 .sink { [self] height in
-                    // Use DispatchQueue.main.async to avoid the "mutating self" error
                     DispatchQueue.main.async {
                         self.keyboardHeight = height
                     }
@@ -83,28 +82,17 @@ struct MapView: View {
                             case .library(let library):
                                 // Custom annotation view for library
                                 ZStack {
-                                    if library.isVisited {
-                                        Circle()
-                                            .fill(Color.yellow)
-                                            .frame(width: 40, height: 40)
-
-                                        Image(systemName: "book.fill")
-                                            .resizable()
-                                            .frame(width: 30, height: 30)
-                                            .foregroundColor(.white)
-                                    } else {
-                                        Circle()
-                                            .fill(Color.green)
-                                            .frame(width: 40, height: 40)
-
-                                        Image(systemName: "book.fill")
-                                            .resizable()
-                                            .frame(width: 30, height: 30)
-                                            .foregroundColor(.white)
-                                    }
+                                    Circle()
+                                        .fill(library.isVisited ? Color.yellow : Color.green)  // Pin color based on isVisited
+                                        .frame(width: 35, height: 35)
+                                    
+                                    Image(systemName: "book.fill")
+                                        .resizable()
+                                        .frame(width: 15, height: 15)
+                                        .foregroundColor(.white)
                                 }
+                                .contentShape(Rectangle()) // Make the whole annotation tappable
                                 .onTapGesture {
-//                                    print("Tapped on: \(library.name)")
                                     selectedLibrary = library
                                     showingDetailView = true
                                 }
@@ -120,9 +108,12 @@ struct MapView: View {
                     }
                     .navigationTitle("Nearby Libraries")
                     .sheet(isPresented: $showingDetailView) {
-                        // Directly pass the non-optional Binding<Library>
                         LibraryDetailView(library: $selectedLibrary)
                             .frame(height: UIScreen.main.bounds.height / 2)
+                            .onDisappear {
+                                // Force the map to update when the detail view is closed
+                                updateLibraryAnnotations()
+                            }
                     }
             } else {
                 Text("Loading your location...")
@@ -131,15 +122,12 @@ struct MapView: View {
 
             // Floating "Search Here" button on top of the map
             Button(action: {
-                // When clicked, center the map on the panned location (if panned location is available)
-                if let pannedLocation = pannedLocation {
-                    region.center = pannedLocation
-                    findLibrariesAtLocation(pannedLocation) // Fetch libraries near the panned location
-                } else if let userLocation = locationManager.userLocation {
-                    // If no panned location, use the current location
-                    region.center = userLocation.coordinate
-                    findLibrariesAtLocation(userLocation.coordinate) // Fetch libraries near current location
-                }
+                // Clear existing library annotations before fetching new ones
+                libraryAnnotations.removeAll()
+
+                // Use the current center of the map (region.center) for the "Search Here" button
+                let searchLocation = region.center
+                findLibrariesAtLocation(searchLocation) // Fetch libraries at the current map center
             }) {
                 Text("Search Here")
                     .font(.subheadline)
@@ -149,10 +137,30 @@ struct MapView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
             }
-            .padding(.bottom, keyboardHeight + 10) // Adjusted for keyboard height
-            .position(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height - 200) // Position at the bottom of the screen
+            .padding(.bottom, keyboardHeight + 10)
+            .position(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height - 200)
 
-            // Search Bar at the top with toolbar including a Done button
+            // Recenter button
+            Button(action: {
+                if let userLocation = locationManager.userLocation {
+                    // Reset the map to the user's current location
+                    region.center = userLocation.coordinate
+                }
+            }) {
+                Image(systemName: "location.fill") // Circular arrow recenter icon
+                    .resizable()
+                    .frame(width: 25, height: 25) // Adjust the size of the icon
+                    .padding() // Add padding to create the circular background
+                    .background(Color.white) // White background
+                    .foregroundColor(Color.green) // Green foreground for the icon
+                    .clipShape(Circle()) // Make the button circular
+                    .shadow(radius: 5) // Optional: Add a shadow for a better look
+            }
+            .padding(.bottom, keyboardHeight + 10) // Adjusted for keyboard height
+            .padding(.trailing, 20) // Padding from the right edge
+            .position(x: UIScreen.main.bounds.width - 60, y: UIScreen.main.bounds.height - 200) // Position at the bottom-right corner of the map (above navbar)
+
+            // Search Bar
             VStack {
                 HStack {
                     TextField("Search for an address", text: $searchText)
@@ -162,7 +170,7 @@ struct MapView: View {
                         .padding(.horizontal)
                         .focused($isSearchFocused)
                         .onSubmit {
-                            searchForAddress() // Optional: trigger the search on submit
+                            searchForAddress() // Trigger the search on submit
                         }
                         .toolbar {
                             ToolbarItemGroup(placement: .keyboard) {
@@ -207,52 +215,21 @@ struct MapView: View {
 
                 Spacer() // Pushes the search bar to the top of the screen
             }
-
-            // "Re-center" button overlay on the map
-            Button(action: {
-                if let userLocation = locationManager.userLocation {
-                    // Reset the map to the user's current location
-                    region.center = userLocation.coordinate
-                }
-            }) {
-                Image(systemName: "location.fill") // Circular arrow recenter icon
-                    .resizable()
-                    .frame(width: 25, height: 25) // Adjust the size of the icon
-                    .padding() // Add padding to create the circular background
-                    .background(Color.white) // White background
-                    .foregroundColor(Color.green) // Green foreground for the icon
-                    .clipShape(Circle()) // Make the button circular
-                    .shadow(radius: 5) // Optional: Add a shadow for a better look
-            }
-            .padding(.bottom, keyboardHeight + 10) // Adjusted for keyboard height
-            .padding(.trailing, 20) // Padding from the right edge
-            .position(x: UIScreen.main.bounds.width - 60, y: UIScreen.main.bounds.height - 200) // Position at the bottom-right corner of the map (above navbar)
+        }
+        .onChange(of: selectedLibrary) { newLibrary in
+            // Whenever the selectedLibrary is updated, update the libraryAnnotations array
+            updateLibraryAnnotations()
         }
         .onAppear {
-            // Update region when the view appears and the user location is available
+            // Load libraries only once
+            if !librariesLoaded {
+                loadLibraries()
+                librariesLoaded = true
+            }
             if let userLocation = locationManager.userLocation {
                 region.center = userLocation.coordinate
             }
         }
-        .onChange(of: locationManager.userLocation) { newLocation in
-            // Only update the region if it hasn't been manually set by the user
-            if pannedLocation == nil {
-                if let newLocation = newLocation {
-                    region.center = newLocation.coordinate
-                }
-            }
-        }
-        .onChange(of: region.center) { newCenter in
-            // Track the panned location when the user drags the map
-            pannedLocation = newCenter
-        }
-        .gesture(
-            TapGesture()
-                .onEnded {
-                    // Unfocus the search bar when tapping outside of it (on the map)
-                    isSearchFocused = false
-                }
-        )
     }
 
     // Function to search for the address and update the map's region
@@ -264,6 +241,7 @@ struct MapView: View {
                     region.center = location.coordinate
                     // Convert CLPlacemark to MKPlacemark and add to annotations
                     let mkPlacemark = MKPlacemark(placemark: placemark)
+                    libraryAnnotations.removeAll()
                     annotations.append(.searchedLocation(mkPlacemark))
                     findLibrariesAtLocation(location.coordinate) // Fetch libraries at the searched location
                 }
@@ -271,21 +249,39 @@ struct MapView: View {
         }
     }
 
-    // Function to find libraries at a specific location
+    // Update library annotations based on search and fetch
     func findLibrariesAtLocation(_ coordinate: CLLocationCoordinate2D) {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        searchForNearbyLibraries(userLocation: location) { libraries in
-            self.libraryAnnotations = libraries
-            // Get the new region for all libraries
+        searchForNearbyLibraries(userLocation: location) { newLibraries in
+            var updatedLibraries: [Library] = []
+
+            // Loop through new libraries and preserve the isVisited property for existing libraries
+            for newLibrary in newLibraries {
+                if let existingLibrary = libraryAnnotations.first(where: { $0.id == newLibrary.id }) {
+                    // Preserve the isVisited status from existing library and update only coordinates
+                    var updatedLibrary = newLibrary
+                    updatedLibrary.isVisited = existingLibrary.isVisited // Keep isVisited unchanged
+                    updatedLibraries.append(updatedLibrary)
+                } else {
+                    // Add new library without changing isVisited
+                    updatedLibraries.append(newLibrary)
+                }
+            }
+
+            // Now that the new libraries are updated with isVisited preserved, update the libraryAnnotations
+            libraryAnnotations = updatedLibraries
+
+            // Update the region to fit all libraries
             let newRegion = getRegionForAllLibraries()
-            // Animate the region change smoothly
             withAnimation(.easeInOut(duration: 1.0)) {
-                self.region = newRegion // Update the region smoothly
+                self.region = newRegion
             }
         }
     }
 
-    // Function to search for nearby libraries at a specific location
+
+
+
     func searchForNearbyLibraries(userLocation: CLLocation, completion: @escaping ([Library]) -> Void) {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = "Public Library"
@@ -299,16 +295,15 @@ struct MapView: View {
                 completion([])
             } else {
                 if let mapItems = response?.mapItems {
-                    let libraries = mapItems.map { Library(mapItem: $0) } // Map MKMapItems to Library
-                    completion(libraries) // Return the libraries
+                    let libraries = mapItems.map { Library(mapItem: $0) }
+                    completion(libraries)
                 } else {
-                    completion([]) // Return an empty array if no libraries found
+                    completion([])
                 }
             }
         }
     }
 
-    // Function to get the region that encompasses all libraries
     func getRegionForAllLibraries() -> MKCoordinateRegion {
         guard !libraryAnnotations.isEmpty else { return region }
 
@@ -328,10 +323,16 @@ struct MapView: View {
 
         return MKCoordinateRegion(center: center, span: span)
     }
-}
 
-struct MapView_Previews: PreviewProvider {
-    static var previews: some View {
-        MapView()
+    func updateLibraryAnnotations() {
+        // Force the update of library annotations when selectedLibrary changes
+        if let index = libraryAnnotations.firstIndex(where: { $0.id == selectedLibrary.id }) {
+            libraryAnnotations[index] = selectedLibrary
+        }
+    }
+
+    func loadLibraries() {
+        // Load libraries from UserDefaults when the app starts
+        libraryAnnotations = Library.loadLibraries(from: []) // Placeholder: Replace with actual MKMapItems you have
     }
 }
