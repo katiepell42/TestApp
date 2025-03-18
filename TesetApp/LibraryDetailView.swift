@@ -26,6 +26,7 @@ struct LibraryDetailView: View {
                 .lineLimit(nil)
                 .multilineTextAlignment(.center)
                 .padding()
+                .frame(maxWidth: .infinity, alignment:.leading)
 
             // Library Address
             Text(library.address)

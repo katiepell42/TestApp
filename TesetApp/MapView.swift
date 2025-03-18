@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import Combine // Import Combine
 
 enum AnnotationItem: Identifiable {
     case library(Library)
@@ -38,6 +39,9 @@ struct MapView: View {
     @State private var isSearchPerformed: Bool = false
     @State private var pannedLocation: CLLocationCoordinate2D? = nil // Track the panned location
     @State private var searchText: String = "" // State for the search text
+    @FocusState private var isSearchFocused: Bool // To track the focus state of the search bar
+    @State private var keyboardHeight: CGFloat = 0 // To track keyboard height
+    @State private var keyboardWillChangeFrameCancellable: AnyCancellable? // To store the publisher
 
     // Custom initializer to initialize `selectedLibrary`
     init() {
@@ -47,6 +51,20 @@ struct MapView: View {
         
         // Initialize selectedLibrary with just the mapItem
         _selectedLibrary = State(initialValue: Library(mapItem: defaultMapItem)) // Only passing mapItem
+
+        // Start observing the keyboard changes
+        self._keyboardWillChangeFrameCancellable = State(initialValue:
+            NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)
+                .compactMap { notification in
+                    (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect)?.height
+                }
+                .sink { [self] height in
+                    // Use DispatchQueue.main.async to avoid the "mutating self" error
+                    DispatchQueue.main.async {
+                        self.keyboardHeight = height
+                    }
+                }
+        )
     }
 
     var body: some View {
@@ -86,6 +104,7 @@ struct MapView: View {
                                     }
                                 }
                                 .onTapGesture {
+//                                    print("Tapped on: \(library.name)")
                                     selectedLibrary = library
                                     showingDetailView = true
                                 }
@@ -130,10 +149,10 @@ struct MapView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
             }
-            .padding(.bottom, 40) // Padding from the bottom to avoid overlap with the tab bar
+            .padding(.bottom, keyboardHeight + 10) // Adjusted for keyboard height
             .position(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height - 200) // Position at the bottom of the screen
 
-            // Search Bar at the top
+            // Search Bar at the top with toolbar including a Done button
             VStack {
                 HStack {
                     TextField("Search for an address", text: $searchText)
@@ -141,8 +160,18 @@ struct MapView: View {
                         .background(Color.white)
                         .cornerRadius(8)
                         .padding(.horizontal)
+                        .focused($isSearchFocused)
                         .onSubmit {
                             searchForAddress() // Optional: trigger the search on submit
+                        }
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("Done") {
+                                    // Dismiss keyboard when the Done button is tapped
+                                    isSearchFocused = false
+                                }
+                            }
                         }
                         .overlay(
                             HStack {
@@ -195,7 +224,7 @@ struct MapView: View {
                     .clipShape(Circle()) // Make the button circular
                     .shadow(radius: 5) // Optional: Add a shadow for a better look
             }
-            .padding(.bottom, 40) // Padding from the bottom
+            .padding(.bottom, keyboardHeight + 10) // Adjusted for keyboard height
             .padding(.trailing, 20) // Padding from the right edge
             .position(x: UIScreen.main.bounds.width - 60, y: UIScreen.main.bounds.height - 200) // Position at the bottom-right corner of the map (above navbar)
         }
@@ -217,6 +246,13 @@ struct MapView: View {
             // Track the panned location when the user drags the map
             pannedLocation = newCenter
         }
+        .gesture(
+            TapGesture()
+                .onEnded {
+                    // Unfocus the search bar when tapping outside of it (on the map)
+                    isSearchFocused = false
+                }
+        )
     }
 
     // Function to search for the address and update the map's region
