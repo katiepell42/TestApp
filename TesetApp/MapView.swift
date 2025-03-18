@@ -161,17 +161,6 @@ struct MapView: View {
                         )
 
 
-                    // "X" Button to clear the text
-//                    if !searchText.isEmpty {
-//                        Button(action: {
-//                            searchText = "" // Clear the text when the button is tapped
-//                        }) {
-//                            Image(systemName: "xmark.circle.fill")
-//                                .foregroundColor(.gray)
-//                        }
-//                        .padding(.trailing, 8) // Add some spacing on the right
-//                    }
-
                     // Magnifying glass button
                     Button(action: {
                         searchForAddress() // Trigger search
@@ -190,7 +179,25 @@ struct MapView: View {
                 Spacer() // Pushes the search bar to the top of the screen
             }
 
-
+            // "Re-center" button overlay on the map
+            Button(action: {
+                if let userLocation = locationManager.userLocation {
+                    // Reset the map to the user's current location
+                    region.center = userLocation.coordinate
+                }
+            }) {
+                Image(systemName: "location.fill") // Circular arrow recenter icon
+                    .resizable()
+                    .frame(width: 25, height: 25) // Adjust the size of the icon
+                    .padding() // Add padding to create the circular background
+                    .background(Color.white) // White background
+                    .foregroundColor(Color.green) // Green foreground for the icon
+                    .clipShape(Circle()) // Make the button circular
+                    .shadow(radius: 5) // Optional: Add a shadow for a better look
+            }
+            .padding(.bottom, 40) // Padding from the bottom
+            .padding(.trailing, 20) // Padding from the right edge
+            .position(x: UIScreen.main.bounds.width - 60, y: UIScreen.main.bounds.height - 200) // Position at the bottom-right corner of the map (above navbar)
         }
         .onAppear {
             // Update region when the view appears and the user location is available
@@ -227,7 +234,6 @@ struct MapView: View {
             }
         }
     }
-
 
     // Function to find libraries at a specific location
     func findLibrariesAtLocation(_ coordinate: CLLocationCoordinate2D) {
@@ -285,15 +291,6 @@ struct MapView: View {
         let span = MKCoordinateSpan(latitudeDelta: latitudeDelta * 1.2, longitudeDelta: longitudeDelta * 1.2)
 
         return MKCoordinateRegion(center: center, span: span)
-    }
-
-    func updateLibraryAnnotations() {
-        // Update the library annotations whenever `isVisited` changes
-        self.libraryAnnotations = libraryAnnotations.map { library in
-            var updatedLibrary = library
-            updatedLibrary.isVisited = updatedLibrary.isVisited // Any additional state update if needed
-            return updatedLibrary
-        }
     }
 }
 
