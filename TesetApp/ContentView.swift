@@ -1,24 +1,43 @@
-//
-//  ContentView.swift
-//  TesetApp
-//
-//  Created by Katie Pell on 3/17/25.
-//
-
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            HomeView()
+                .tabItem {
+                    Image(systemName: "house")
+                    Text("Home")
+                }
+            
+            NotifView()
+                .tabItem {
+                    Image(systemName: "bell")
+                    Text("Notifications")
+                }
+            
+            MapView()
+                .tabItem {
+                    Image(systemName: "map")
+                    Text("Map")
+                }
+                        
+            FaveView()
+                .tabItem {
+                    Image(systemName: "heart")
+                    Text("Favorites")
+                }
+            
+            ProfileView()
+                .tabItem {
+                    Image(systemName: "person.circle")
+                    Text("Profile")
+                }
         }
-        .padding()
     }
 }
 
-#Preview {
-    ContentView()
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
